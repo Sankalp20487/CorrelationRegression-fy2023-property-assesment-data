@@ -1,0 +1,240 @@
+---
+title: "Module 5"
+author: "Sankalp Biswal"
+date: "2023-12-12"
+output: html_document
+---
+
+## 1.Importing Libraries
+```{r}
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(corrplot)
+library(car)
+library(magrittr)
+
+
+```
+
+## 2.Importing dataset
+
+* Selecting variables of interest
+```{r}
+property_dataset <- read.csv("fy2023-property-assessment-data.csv")
+
+property_subset <- subset(property_dataset,select = c(CITY,LU,LU_DESC,BLDG_TYPE,LAND_SF,GROSS_AREA,BLDG_VALUE,LAND_VALUE,TOTAL_VALUE,GROSS_TAX,YR_BUILT,YR_REMODEL,ROOF_STRUCTURE,BED_RMS,FULL_BTH,KITCHENS,TT_RMS,RES_FLOOR,OVERALL_COND,HEAT_TYPE,AC_TYPE,PROP_VIEW,NUM_PARKING,FIREPLACES,ZIP_CODE))
+```
+
+## 3. Data cleaning
+
+
+```{r}
+clean_numeric_columns <- function(x) {
+  # Remove outliers based on IQR
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr_value <- IQR(x, na.rm = TRUE)
+  
+  lower_bound <- q1 - 1.5 * iqr_value
+  upper_bound <- q3 + 1.5 * iqr_value
+  
+  x_outliers_removed <- ifelse(x < lower_bound | x > upper_bound, NA, x)
+  
+  # Impute missing values with the median
+  x_cleaned <- ifelse(is.na(x_outliers_removed), median(x, na.rm = TRUE), x_outliers_removed)
+  
+  return(x_cleaned)
+}
+
+# Clean all numeric columns in the dataset
+property_subset_clean <- property_subset %>%
+  mutate(across(where(is.numeric), clean_numeric_columns))
+
+# Remove rows with any NA values after cleaning
+property_subset_clean <- na.omit(property_subset_clean)
+
+property_subset_clean <- property_subset_clean %>%
+  mutate(CITY = ifelse(CITY == "" | is.na(CITY), "Unknown", CITY))
+
+property_subset_clean <- property_subset_clean %>%
+  mutate(OVERALL_COND = ifelse(OVERALL_COND == "" | is.na(OVERALL_COND), "Unknown", OVERALL_COND))
+
+property_subset_clean <- property_subset_clean %>%
+  mutate(PROP_VIEW = ifelse(PROP_VIEW == "" | is.na(PROP_VIEW), "Unknown", PROP_VIEW))
+
+property_subset_clean <- property_subset_clean %>%
+  mutate(AC_TYPE = ifelse(AC_TYPE == "" | is.na(AC_TYPE), "Unknown", AC_TYPE))
+```
+
+
+## 4. Tabulations
+
+## Overview
+
+* There are 2 parts namely - **PART-1 and PART-2**.
+* **PART-1** deals with correlation table for 5 variables - "LAND_SF", "GROSS_AREA", "BLDG_VALUE", "TOTAL_VALUE", "NUM_PARKING".
+* **PART-2** deals with regression table for **1 dependent variable** and **5 independent variable**.
+
+---------------------
+
+## PART-1
+
+#### Q. Why should we limit number of variables to 5 ?
+
+A. Limiting a correlation chart to around 5 variables for reporting **maintains clarity**, **avoids visual clutter**, **focuses on key relationships**, **enhances interpretability** for a diverse audience, ensures **communication efficiency**, and **addresses practical constraints in reports**.
+
+#### Correlation Table
+
+* We select 5 variables for building the correlation table.
+* We remove null values.
+
+```{r}
+# Selecting relevant variables
+selected_variables <- property_subset[, c("LAND_SF", "GROSS_AREA", "BLDG_VALUE", "TOTAL_VALUE", "NUM_PARKING")]
+
+selected_variables <- na.omit(selected_variables)
+
+# Creating a correlation matrix
+correlation_matrix <- cor(selected_variables)
+
+print(correlation_matrix)
+
+
+```
+#### Heatmap for correlation table
+
+```{r}
+corrplot(correlation_matrix, method="number")
+```
+
+#### Interpretation
+
+1. **LAND_SF and GROSS_AREA (0.60):**
+
+* A positive correlation of 0.60 suggests a moderate positive linear relationship between LAND_SF and GROSS_AREA. As one variable increases, the other tends to increase as well.
+
+2. **LAND_SF and BLDG_VALUE (0.08):**
+
+* There is a very weak positive correlation (0.08) between LAND_SF and BLDG_VALUE. The correlation is close to zero, indicating a minimal linear relationship.
+
+3. **LAND_SF and TOTAL_VALUE (0.17):**
+* A weak positive correlation (0.17) exists between LAND_SF and TOTAL_VALUE, implying a slight tendency for these variables to increase together.
+
+4. **LAND_SF and NUM_PARKING (0.60):**
+
+* There is a strong positive correlation (0.60) between LAND_SF and NUM_PARKING, indicating a robust positive linear relationship.
+
+5. **GROSS_AREA and BLDG_VALUE (0.30):**
+
+* A moderate positive correlation (0.30) suggests that GROSS_AREA and BLDG_VALUE tend to increase together, but the relationship is not extremely strong.
+
+6. **GROSS_AREA and TOTAL_VALUE (0.41):**
+
+* A moderate positive correlation (0.41) indicates a reasonable positive linear relationship between GROSS_AREA and TOTAL_VALUE.
+
+7. **GROSS_AREA and NUM_PARKING (0.57):**
+
+* There is a strong positive correlation (0.57) between GROSS_AREA and NUM_PARKING, suggesting a robust positive linear relationship.
+
+8. **BLDG_VALUE and TOTAL_VALUE (0.97):**
+
+* A very strong positive correlation (0.97) implies a nearly perfect linear relationship between BLDG_VALUE and TOTAL_VALUE. These two variables are highly correlated.
+
+9. **BLDG_VALUE and NUM_PARKING (0.12):**
+
+* There is a weak positive correlation (0.12) between BLDG_VALUE and NUM_PARKING, indicating a minimal linear relationship.
+
+10. **TOTAL_VALUE and NUM_PARKING (0.19):**
+
+* A weak positive correlation (0.19) suggests a slight tendency for TOTAL_VALUE and NUM_PARKING to increase together.
+
+* In summary, this correlation matrix provides insights into the linear relationships between different pairs of variables in the dataset. The **strength and direction** of the **correlations** help us understand how **changes in one variable relate to changes in another.**
+
+----------------------------
+
+## PART-2
+
+* We'll produce a regression table using `lm()` for predicting the **TOTAL_VALUE (Dependent variable)** using the **Independent Variables** - "LAND_SF", "GROSS_AREA", "BED_RMS","NUM_PARKING",and "FULL_BTH".
+
+```{r}
+part2_variables <- property_subset_clean[, c("LAND_SF", "GROSS_AREA", "BED_RMS", "TOTAL_VALUE","FULL_BTH","GROSS_TAX")]
+
+
+# Set scipen and digits options to avoid scientific notation
+options(scipen = 100, digits = 10)
+
+# Fit the regression model
+
+model <- lm(TOTAL_VALUE ~ LAND_SF + GROSS_AREA + BED_RMS + FULL_BTH  + GROSS_TAX, data = part2_variables)
+
+# Display regression summary
+summary(model)
+
+# Export the regression table to a CSV file
+write.csv(coef(summary(model)), file = "regression_table.csv")
+
+
+# Reset scipen and digits options to their default values
+options(scipen = 0, digits = 7)
+```
+
+#### Coefficients:
+
+1. **Intercept (Constant):** The **intercept is $66,305.79**. This is the estimated value of TOTAL_VALUE when all predictor or independent variables (LAND_SF, GROSS_AREA, BED_RMS, FULL_BTH, GROSS_TAX) are zero. 
+
+2. **LAND_SF Coefficient:** For **each additional unit of LAND_SF**, the estimated change in **TOTAL_VALUE** is approximately **$0.03.** The p-value is **0.88718**, suggesting that the coefficient for LAND_SF is not statistically significant.
+
+3. **GROSS_AREA Coefficient:** For **each additional unit of GROSS_AREA**, the estimated change in **TOTAL_VALUE** is approximately **$13.63.** This suggests a **positive** relationship, indicating that **larger gross areas** are associated with **higher total property values**, holding other variables constant.
+
+4. **BED_RMS Coefficient:** For **each additional bedroom (BED_RMS)**, the estimated change in **TOTAL_VALUE** is approximately **-$4,116.64.** This suggests a negative relationship, indicating that **more bedrooms** are associated with **lower total property values**, holding other variables constant.
+
+5. **FULL_BTH Coefficient:** For **each additional full bathroom (FULL_BTH)**, the estimated change in **TOTAL_VALUE** is approximately **$6,149.23**. This suggests a **positive** relationship, indicating that **more full bathrooms** are associated with higher **total property values**, holding other variables constant.
+
+6. **GROSS_TAX Coefficient:** For **each additional unit of GROSS_TAX**, the estimated change in **TOTAL_VALUE** is approximately **$80.39**. This suggests a positive relationship, indicating that **higher gross taxes** are associated with **higher total property values**, holding other variables constant.
+
+#### Model Fit:
+
+1. **Residual Standard Error:** The **standard deviation** of the residuals is **$150,412.4**. This provides a measure of the difference between the observed and predicted values.
+
+2. **Multiple R-squared:** The **coefficient of determination is 0.83078**, indicating that the model explains approximately **83.08% of the variance in TOTAL_VALUE**.
+
+3. **Adjusted R-squared:** This accounts for the **number of predictors** in the model and is **0.8307744** in this case.
+
+4. **F-statistic:** The **F-statistic** is **147,791.3** with a **p-value < 0.00000000000000022204**. This suggests that the **overall model is statistically significant**, indicating that at **least one predictor variable** is related to the **response variable.**
+
+#### Interpretation:
+
+* The model suggests that, after controlling for other variables, **larger gross areas**, **more full bathrooms**, and **higher gross taxes** are associated with **higher total property values**. **More bedrooms**,and **land area** seem to be associated with **lower total property values.**
+
+* The coefficients with associated p-values less than 0.05 are considered statistically significant.
+
+* The model explains about **83.08%** of the **variance** in the **total property values**, based on the **R-squared value**.
+
+
+-------------------------
+
+#### Q . How does regression analysis differ from correlation analysis?
+
+A. 1. **Regression Analysis:**
+
+* **Purpose:** **Predicts and models** the **relationship** between **variables, emphasizing causality**.
+* **Output:** Results in a **regression equation** for **prediction**, indicating variable impacts.
+* **Causality:** Assesses **cause-and-effect** relationships.
+* **Context:** Used for **forecasting**, **hypothesis testing**, and **understanding variable influences**.
+
+2. **Correlation Analysis:**
+
+* **Purpose:** Measures **strength and direction** of **linear associations** without implying causation.
+* **Output:** Provides a **correlation coefficient** for **quantifying linear relationships**.
+* **Causality:** **Does not** imply **cause-and-effect**; solely gauges **linear connections**.
+* **Context:** Utilized for describing associations **without predicting outcomes or inferring causation**.
+
+---------------------------
+
+
+
+
+
+
+
